@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Charlie's Tickers</title>
+    <meta
+      name="description"
+      content="Charlie's Tickers — a sleek, modern live stock/crypto ticker dashboard."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-scrim" aria-hidden="true"></div>
+    <div id="bg-floaters" class="bg-floaters" aria-hidden="true"></div>
+
+    <header class="header">
+      <div class="header__inner">
+        <section class="sky" aria-label="Moon and stars scene">
+          <div class="sky__stars" id="skyStars" aria-hidden="true"></div>
+          <div class="moonWrap">
+            <div class="moon" id="moonTarget" aria-hidden="true"></div>
+            <div class="moonXrp" aria-hidden="true">
+              <span class="moonXrp__badge">XRP</span>
+            </div>
+          </div>
+        </section>
+        <div class="brand">
+          <h1 class="brand__title">Charlie's Tickers</h1>
+          <p class="brand__quote">
+            "Shoot for the moon. Even if you miss, you'll land among the stars."
+          </p>
+          <p class="brand__quoteAuthor">- Norman Vincent Peale</p>
+        </div>
+        <div class="header__right">
+          <img class="profilePic" src="./assets/profile.png" alt="Charlie's profile picture" />
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="status">
+        <div class="status__left">
+          <div id="marketBadge" class="badge badge--neutral">Checking market…</div>
+          <div class="status__meta">
+            <div>
+              <span class="muted">Last update:</span>
+              <span id="lastUpdate">—</span>
+            </div>
+            <div class="dot">•</div>
+            <div>
+              <span class="muted">New York time:</span>
+              <span id="nyTime">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="status__right">
+          <div id="apiHint" class="hint">
+            Live quotes powered by Yahoo Finance.
+          </div>
+          <div class="providerControls">
+            <input
+              id="finnhubKeyInput"
+              class="providerInput"
+              type="password"
+              autocomplete="off"
+              placeholder="Finnhub API key (fallback)"
+            />
+            <button id="saveFinnhubBtn" class="btn btn--ghost" type="button">Save Key</button>
+            <button id="clearFinnhubBtn" class="btn btn--ghost" type="button">Clear</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="gridWrap">
+        <div id="cards" class="grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
