@@ -29,50 +29,98 @@ function safePath(urlPath) {
   return rel === "/" ? "/index.html" : rel;
 }
 
+const YAHOO_CHUNK = 8;
+const FINNHUB_GAP_MS = 150;
+
+function delay(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function fetchYahooQuotes(symbols) {
-  const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols.join(","))}`;
-  const upstream = await fetch(yahooUrl, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 CharlieTickers/1.0",
-      Accept: "application/json",
-    },
-  });
-  const json = await upstream.json().catch(() => ({}));
-  const results = json?.quoteResponse?.result || [];
-  const error = json?.quoteResponse?.error || null;
-  if (!upstream.ok || error || !Array.isArray(results) || results.length === 0) {
+  if (!symbols.length) return { ok: false, error: "No symbols requested" };
+  const merged = [];
+  const yahooErrors = [];
+  for (let i = 0; i < symbols.length; i += YAHOO_CHUNK) {
+    const chunk = symbols.slice(i, i + YAHOO_CHUNK);
+    const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(","))}`;
+    const upstream = await fetch(yahooUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
+        Referer: "https://finance.yahoo.com/",
+      },
+    });
+    const json = await upstream.json().catch(() => ({}));
+    const results = json?.quoteResponse?.result || [];
+    const error = json?.quoteResponse?.error || null;
+    const financeErr = json?.finance?.error || null;
+    if (!upstream.ok || error || financeErr) {
+      const msg =
+        error?.description ||
+        (typeof financeErr?.description === "string" ? financeErr.description : null) ||
+        (typeof financeErr?.code === "string" ? financeErr.code : null) ||
+        `Yahoo HTTP ${upstream.status}`;
+      yahooErrors.push(msg);
+      continue;
+    }
+    if (Array.isArray(results) && results.length > 0) merged.push(...results);
+  }
+  if (merged.length === 0) {
     return {
       ok: false,
-      error: error?.description || `Yahoo upstream error (HTTP ${upstream.status})`,
+      error:
+        yahooErrors[0] ||
+        "Yahoo returned no data. Add a Finnhub API key in the UI (free at finnhub.io/register).",
     };
   }
-  return { ok: true, provider: "yahoo", results };
+  return { ok: true, provider: "yahoo", results: merged };
 }
 
 async function fetchFinnhubQuotes(yahooSymbols, finnhubSymbols, finnhubKey) {
   if (!finnhubKey) return { ok: false, error: "Yahoo failed and no Finnhub key provided" };
-  const tasks = finnhubSymbols.map(async (fSymbol, idx) => {
-    const ySymbol = yahooSymbols[idx];
+  const results = [];
+  const hints = [];
+  for (let idx = 0; idx < finnhubSymbols.length; idx++) {
+    if (idx > 0) await delay(FINNHUB_GAP_MS);
+    const fSymbol = finnhubSymbols[idx];
+    const ySymbol = yahooSymbols[idx] ?? yahooSymbols[0];
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(fSymbol)}&token=${encodeURIComponent(
       finnhubKey
     )}`;
     try {
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) return null;
-      if (typeof json?.c !== "number" || json.c <= 0) return null;
-      return {
+      if (res.status === 429) {
+        hints.push("Finnhub rate limit (429)");
+        continue;
+      }
+      if (!res.ok) {
+        hints.push(String(json.error || json.message || `HTTP ${res.status}`));
+        continue;
+      }
+      const finnhubErr = json?.error ?? json?.message;
+      if (typeof finnhubErr === "string" && finnhubErr.trim()) {
+        hints.push(finnhubErr.trim());
+        continue;
+      }
+      if (typeof json?.c !== "number" || json.c <= 0) continue;
+      results.push({
         symbol: ySymbol,
         regularMarketPrice: json.c,
         regularMarketChangePercent: typeof json?.dp === "number" ? json.dp : 0,
-      };
+      });
     } catch {
-      return null;
+      hints.push("network error");
     }
-  });
-  const raw = await Promise.all(tasks);
-  const results = raw.filter(Boolean);
-  if (results.length === 0) return { ok: false, error: "Finnhub fallback failed or key invalid" };
+  }
+  if (results.length === 0) {
+    const tail = hints.length ? ` (${hints.slice(0, 2).join("; ")})` : "";
+    return {
+      ok: false,
+      error: `Finnhub returned no usable prices${tail}. Use a Finnhub key from finnhub.io/dashboard.`,
+    };
+  }
   return { ok: true, provider: "finnhub", results };
 }
 
