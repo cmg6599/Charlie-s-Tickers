@@ -167,6 +167,15 @@ function sparkClass(pct) {
   return "";
 }
 
+/** Shown beside % change; avoids "fetch error" when we still display last good prices after a failed refresh. */
+function cardStatusLabel(s) {
+  if (s.status === "ok") return "live";
+  if (s.status === "idle") return "loading";
+  const hasStaleQuote = s.price != null || s.percent != null;
+  if (hasStaleQuote) return "stale";
+  return s.errMsg === "No data" ? "no quote" : "fetch error";
+}
+
 function renderCards() {
   const frag = document.createDocumentFragment();
   for (const t of TICKERS) {
@@ -225,8 +234,8 @@ function renderCards() {
 
     const status = document.createElement("span");
     status.className = "muted";
-    status.textContent =
-      s.status === "err" ? "fetch error" : s.status === "ok" ? "live" : "loading";
+    status.textContent = cardStatusLabel(s);
+    if (s.status === "err" && s.errMsg) status.title = String(s.errMsg);
 
     change.appendChild(pct);
     change.appendChild(status);
