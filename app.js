@@ -1,6 +1,5 @@
 const FAST_REFRESH_MS = 30_000;
 const SLOW_REFRESH_MS = 90_000;
-const FINNHUB_STORAGE_KEY = "charlies_tickers_finnhub_key";
 
 const TICKERS = [
   { id: "CRWV", name: "CoreWeave", type: "stock", symbol: "CRWV", yahooSymbol: "CRWV", finnhubSymbol: "CRWV" },
@@ -27,9 +26,6 @@ const lastUpdateEl = $("#lastUpdate");
 const nyTimeEl = $("#nyTime");
 const apiHintEl = $("#apiHint");
 const skyStarsEl = $("#skyStars");
-const finnhubKeyInputEl = $("#finnhubKeyInput");
-const saveFinnhubBtnEl = $("#saveFinnhubBtn");
-const clearFinnhubBtnEl = $("#clearFinnhubBtn");
 
 /** @type {Map<string, { price: number|null, percent: number|null, updatedAt: Date|null, status: 'idle'|'ok'|'err', errMsg?: string }>} */
 const state = new Map();
@@ -167,13 +163,23 @@ function sparkClass(pct) {
   return "";
 }
 
-/** Shown beside % change; avoids "fetch error" when we still display last good prices after a failed refresh. */
+/** Shown beside % change — short text; full message on `title` (hover). */
 function cardStatusLabel(s) {
   if (s.status === "ok") return "live";
   if (s.status === "idle") return "loading";
   const hasStaleQuote = s.price != null || s.percent != null;
   if (hasStaleQuote) return "stale";
-  return s.errMsg === "No data" ? "no quote" : "fetch error";
+  if (s.errMsg === "No data") return "no quote";
+  const em = String(s.errMsg || "").toLowerCase();
+  if (em.includes("finnhub") && (em.includes("not configured") || em.includes("finnhub_api_key")))
+    return "needs API key";
+  if (em.includes("429") || em.includes("rate limit")) return "rate limited";
+  if (em.includes("401") || em.includes("unauthorized") || em.includes("unable to access"))
+    return "blocked";
+  if (em.includes("404") || em.includes("not found")) return "no API route";
+  if (em.includes("failed to fetch") || em.includes("networkerror") || em.includes("load failed"))
+    return "network";
+  return "unavailable";
 }
 
 function renderCards() {
@@ -235,7 +241,10 @@ function renderCards() {
     const status = document.createElement("span");
     status.className = "muted";
     status.textContent = cardStatusLabel(s);
-    if (s.status === "err" && s.errMsg) status.title = String(s.errMsg);
+    if (s.status === "err" && s.errMsg) {
+      status.title = String(s.errMsg);
+      status.classList.add("status--err");
+    }
 
     change.appendChild(pct);
     change.appendChild(status);
@@ -299,6 +308,22 @@ function setApiHintMessage(message) {
   apiHintEl.textContent = message;
 }
 
+/** One-time: server must load key from `.env` or Vercel env — not from `.env.example`. */
+async function checkServerConfig() {
+  if (!apiHintEl) return;
+  try {
+    const res = await fetch("/api/health", { cache: "no-store" });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j?.finnhubConfigured === false) {
+      setApiHintMessage(
+        "Server has no FINNHUB_API_KEY. Create `.env` next to server.js (copy from .env.example), add your key on one line, restart `node server.js`. On Vercel: set the variable under Environment Variables and redeploy."
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function isRateLimitError(message) {
   const m = String(message || "").toLowerCase();
   return (
@@ -325,11 +350,9 @@ function parseMaybeNumber(v) {
 async function fetchQuotesBatch() {
   const symbols = TICKERS.map((t) => t.yahooSymbol);
   const finnhubSymbols = TICKERS.map((t) => t.finnhubSymbol);
-  const finnhubKey = (localStorage.getItem(FINNHUB_STORAGE_KEY) || "").trim();
   const params = new URLSearchParams({
     symbols: symbols.join(","),
     finnhubSymbols: finnhubSymbols.join(","),
-    finnhubKey,
   });
   const url = `/api/quotes?${params.toString()}`;
   const res = await fetch(url, { cache: "no-store" });
@@ -408,7 +431,7 @@ async function refreshOnce() {
         setPollingSpeed(SLOW_REFRESH_MS);
         setApiHintMessage("Rate limit hit. Auto-switched to slower refresh for live data.");
       } else {
-        setApiHintMessage(`Live fetch failed: ${r.error}`);
+        setApiHintMessage(`Quotes update failed: ${r.error}`);
       }
       // Mark everything err (but keep last values displayed).
       const now = new Date();
@@ -464,29 +487,10 @@ function closeModal() {
 }
 
 function wireUi() {
-  if (finnhubKeyInputEl) {
-    finnhubKeyInputEl.value = localStorage.getItem(FINNHUB_STORAGE_KEY) || "";
-  }
-  if (saveFinnhubBtnEl) {
-    saveFinnhubBtnEl.addEventListener("click", () => {
-      const key = (finnhubKeyInputEl?.value || "").trim();
-      if (key) {
-        localStorage.setItem(FINNHUB_STORAGE_KEY, key);
-        setApiHintMessage("Finnhub fallback key saved. Refreshing quotes...");
-      } else {
-        localStorage.removeItem(FINNHUB_STORAGE_KEY);
-        setApiHintMessage("Finnhub key empty. Yahoo-only mode.");
-      }
-      void refreshOnce();
-    });
-  }
-  if (clearFinnhubBtnEl) {
-    clearFinnhubBtnEl.addEventListener("click", () => {
-      localStorage.removeItem(FINNHUB_STORAGE_KEY);
-      if (finnhubKeyInputEl) finnhubKeyInputEl.value = "";
-      setApiHintMessage("Finnhub key cleared. Yahoo-only mode.");
-      void refreshOnce();
-    });
+  try {
+    localStorage.removeItem("charlies_tickers_finnhub_key");
+  } catch {
+    /* ignore */
   }
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeModal();
@@ -616,11 +620,12 @@ function startFlyingCows() {
   flyingCowTimer = setInterval(launchFlyingCow, 5000);
 }
 
-function init() {
+async function init() {
   setAllIdle();
   renderCards();
   wireUi();
   updateApiHint();
+  await checkServerConfig();
   updateClock();
   clockTimer = setInterval(updateClock, 1_000);
   generateSkyStars();
@@ -639,8 +644,7 @@ function init() {
 
   startPollingIfOpen();
   scheduleMarketWatcher();
-  void refreshOnce();
 }
 
-init();
+void init().catch(() => {});
 

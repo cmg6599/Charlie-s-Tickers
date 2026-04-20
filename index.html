@@ -58,16 +58,13 @@
           <div id="apiHint" class="hint">
             Live quotes powered by Yahoo Finance.
           </div>
-          <div class="providerControls">
-            <input
-              id="finnhubKeyInput"
-              class="providerInput"
-              type="password"
-              autocomplete="off"
-              placeholder="Finnhub API key only (finnhub.io — not Twelve Data)"
-            />
-            <button id="saveFinnhubBtn" class="btn btn--ghost" type="button">Save Key</button>
-            <button id="clearFinnhubBtn" class="btn btn--ghost" type="button">Clear</button>
+          <div class="providerControls providerControls--note" role="note">
+            <span class="providerNote">
+              Finnhub uses <code>FINNHUB_API_KEY</code> on the server only. Local: copy
+              <code>.env.example</code> to a new file named <code>.env</code> (same folder as <code>server.js</code>), put
+              your key there, then restart Node. Editing <code>.env.example</code> alone does nothing. Vercel: Project
+              Settings → Environment Variables → redeploy.
+            </span>
           </div>
         </div>
       </section>

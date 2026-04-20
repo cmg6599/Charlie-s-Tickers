@@ -54,7 +54,12 @@ async function fetchYahooQuotes(symbols) {
 
 /** Free Finnhub tier: avoid parallel burst; one quote at a time with a short gap. */
 async function fetchFinnhubQuotes(yahooSymbols, finnhubSymbols, finnhubKey) {
-  if (!finnhubKey) return { ok: false, error: "Yahoo failed and no Finnhub key provided" };
+  if (!finnhubKey)
+    return {
+      ok: false,
+      error:
+        "Yahoo failed and Finnhub is not configured. Set FINNHUB_API_KEY in Vercel Project Settings → Environment Variables (or local .env for vercel dev).",
+    };
   const results = [];
   const hints = [];
   for (let idx = 0; idx < finnhubSymbols.length; idx++) {
@@ -115,7 +120,7 @@ export default async function handler(req, res) {
   try {
     const symbols = (reqUrl.searchParams.get("symbols") || "").trim();
     const finnhubSymbolsRaw = (reqUrl.searchParams.get("finnhubSymbols") || "").trim();
-    const finnhubKey = (reqUrl.searchParams.get("finnhubKey") || "").trim();
+    const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
     if (!symbols) {
       res.statusCode = 400;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -150,7 +155,7 @@ export default async function handler(req, res) {
     res.end(
       JSON.stringify({
         ok: false,
-        error: `Yahoo failed: ${yahooResult.error}. Finnhub failed: ${finnhubResult.error}.`,
+        error: `Yahoo failed: ${yahooResult.error} — Finnhub failed: ${finnhubResult.error}`,
       })
     );
   } catch (error) {
