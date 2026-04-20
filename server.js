@@ -8,9 +8,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = __dirname;
 
-/** Local dev: load FINNHUB_API_KEY from `.env` if not already set (never commit `.env`). */
+/** Finnhub token: primary `FINNHUB_ENDKEY` (e.g. GitHub Actions secret); legacy `FINNHUB_API_KEY` still works. */
+function finnhubTokenFromEnv() {
+  return String(process.env.FINNHUB_ENDKEY || process.env.FINNHUB_API_KEY || "").trim();
+}
+
+function isFinnhubEnvName(name) {
+  return name === "FINNHUB_ENDKEY" || name === "FINNHUB_API_KEY";
+}
+
+/** Local dev: load Finnhub token from `.env` if not already set (never commit `.env`). */
 function applyLocalDotEnv() {
-  if (String(process.env.FINNHUB_API_KEY || "").trim()) return;
+  if (finnhubTokenFromEnv()) return;
   const envPath = path.join(root, ".env");
   if (!existsSync(envPath)) return;
   try {
@@ -23,20 +32,20 @@ function applyLocalDotEnv() {
       if (t.startsWith("export ")) t = t.slice(7).trim();
       const eq = t.indexOf("=");
       if (eq < 1) {
-        // Allow key name only on one line, token on the next (common mistake).
-        if (t === "FINNHUB_API_KEY") {
+        if (t === "FINNHUB_ENDKEY" || t === "FINNHUB_API_KEY") {
           for (let j = i + 1; j < lines.length; j++) {
-            let next = lines[j].trim();
+            const next = lines[j].trim();
             if (!next || next.startsWith("#")) continue;
             if (next.includes("=")) break;
-            process.env.FINNHUB_API_KEY = next.trim();
+            if (t === "FINNHUB_ENDKEY") process.env.FINNHUB_ENDKEY = next.trim();
+            else process.env.FINNHUB_API_KEY = next.trim();
             break;
           }
         }
         continue;
       }
       const k = t.slice(0, eq).trim();
-      if (k !== "FINNHUB_API_KEY") continue;
+      if (!isFinnhubEnvName(k)) continue;
       let v = t.slice(eq + 1).trim();
       if (
         (v.startsWith('"') && v.endsWith('"')) ||
@@ -44,8 +53,8 @@ function applyLocalDotEnv() {
       ) {
         v = v.slice(1, -1);
       }
-      process.env.FINNHUB_API_KEY = v.trim();
-      break;
+      if (k === "FINNHUB_ENDKEY") process.env.FINNHUB_ENDKEY = v.trim();
+      else process.env.FINNHUB_API_KEY = v.trim();
     }
   } catch {
     /* ignore */
@@ -128,7 +137,7 @@ async function fetchFinnhubQuotes(yahooSymbols, finnhubSymbols, finnhubKey) {
     return {
       ok: false,
       error:
-        "Yahoo failed and Finnhub is not configured. Set FINNHUB_API_KEY on the server (Vercel: Project Settings → Environment Variables; local: .env — see .env.example).",
+        "Yahoo failed and Finnhub is not configured. Set FINNHUB_ENDKEY on the server (GitHub Actions secret, or Vercel env; local: .env — see .env.example). Legacy name FINNHUB_API_KEY is also accepted.",
     };
   const results = [];
   const hints = [];
@@ -185,7 +194,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, error: "Method not allowed" }));
       return;
     }
-    const k = String(process.env.FINNHUB_API_KEY || "").trim();
+    const k = finnhubTokenFromEnv();
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
@@ -203,7 +212,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const symbols = (reqUrl.searchParams.get("symbols") || "").trim();
       const finnhubSymbolsRaw = (reqUrl.searchParams.get("finnhubSymbols") || "").trim();
-      const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
+      const finnhubKey = finnhubTokenFromEnv();
       if (!symbols) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -280,19 +289,19 @@ server.listen(PORT, () => {
   console.log(`Charlie's Tickers running on http://localhost:${PORT}`);
   const envPath = path.join(root, ".env");
   const hasDotEnv = existsSync(envPath);
-  const k = String(process.env.FINNHUB_API_KEY || "").trim();
+  const k = finnhubTokenFromEnv();
   if (k) {
     // eslint-disable-next-line no-console
     console.log(`Finnhub fallback: configured (key length ${k.length}). GET /api/health to verify from the browser.`);
   } else if (hasDotEnv) {
     // eslint-disable-next-line no-console
     console.warn(
-      "Found .env but FINNHUB_API_KEY is empty or not parsed. Use exactly: FINNHUB_API_KEY=yourkey (one line, file must be next to server.js). Remove stray characters after the value."
+      "Found .env but FINNHUB_ENDKEY / FINNHUB_API_KEY is empty or not parsed. Use: FINNHUB_ENDKEY=yourtoken (one line, next to server.js)."
     );
   } else {
     // eslint-disable-next-line no-console
     console.warn(
-      "FINNHUB_API_KEY unset — copy .env.example to .env, add your key, restart. Server only reads `.env`, not `.env.example`."
+      "Finnhub token unset — copy .env.example to .env, set FINNHUB_ENDKEY=..., restart. Server only reads `.env`, not `.env.example`."
     );
   }
 });

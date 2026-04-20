@@ -58,7 +58,7 @@ async function fetchFinnhubQuotes(yahooSymbols, finnhubSymbols, finnhubKey) {
     return {
       ok: false,
       error:
-        "Yahoo failed and Finnhub is not configured. Set FINNHUB_API_KEY in Vercel Project Settings → Environment Variables (or local .env for vercel dev).",
+        "Yahoo failed and Finnhub is not configured. Set FINNHUB_ENDKEY in Vercel Project Settings → Environment Variables (or GitHub Actions secrets). Legacy: FINNHUB_API_KEY.",
     };
   const results = [];
   const hints = [];
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
   try {
     const symbols = (reqUrl.searchParams.get("symbols") || "").trim();
     const finnhubSymbolsRaw = (reqUrl.searchParams.get("finnhubSymbols") || "").trim();
-    const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
+    const finnhubKey = String(process.env.FINNHUB_ENDKEY || process.env.FINNHUB_API_KEY || "").trim();
     if (!symbols) {
       res.statusCode = 400;
       res.setHeader("Content-Type", "application/json; charset=utf-8");

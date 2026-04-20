@@ -171,7 +171,10 @@ function cardStatusLabel(s) {
   if (hasStaleQuote) return "stale";
   if (s.errMsg === "No data") return "no quote";
   const em = String(s.errMsg || "").toLowerCase();
-  if (em.includes("finnhub") && (em.includes("not configured") || em.includes("finnhub_api_key")))
+  if (
+    em.includes("finnhub") &&
+    (em.includes("not configured") || em.includes("finnhub_endkey") || em.includes("finnhub_api_key"))
+  )
     return "needs API key";
   if (em.includes("429") || em.includes("rate limit")) return "rate limited";
   if (em.includes("401") || em.includes("unauthorized") || em.includes("unable to access"))
@@ -316,7 +319,7 @@ async function checkServerConfig() {
     const j = await res.json().catch(() => ({}));
     if (res.ok && j?.finnhubConfigured === false) {
       setApiHintMessage(
-        "Server has no FINNHUB_API_KEY. Create `.env` next to server.js (copy from .env.example), add your key on one line, restart `node server.js`. On Vercel: set the variable under Environment Variables and redeploy."
+        "Server has no Finnhub token. Set FINNHUB_ENDKEY in `.env` next to server.js (or GitHub / Vercel env), restart `node server.js`. Legacy name FINNHUB_API_KEY still works locally."
       );
     }
   } catch {
